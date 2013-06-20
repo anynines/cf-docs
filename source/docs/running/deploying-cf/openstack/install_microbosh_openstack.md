@@ -2,21 +2,36 @@
 
 ## <a id="prerequisites"></a>Prerequisites ##
 
-[Install OpenStack](install_openstack.html).
- 
+* [Install OpenStack](http://docs.openstack.org/grizzly/basic-install/apt/content/)  
+or 
+* [DevStack install](http://devstack.org/) for testing environments
 
-## <a id="step1"></a>Step 1: Create an Inception VM ##
 
-1. Log in to dashboard (Horizon) as admin.
-2. Select Project tab - > admin project.
-3. Click on Access & Security - > Click on Create Keypair button.
-4. Enter the keypair name as admin-keypair and click on Create Keypair.
-5. Save the keypair to some location like: /home/<username>/openstack/admin-keypair.pem
-6. Copy the admin-keypair.pem to Inception VM.
+## <a id="step1"></a>Step 1: Prepare OpenStack and create an Inception VM ##
 
-		scp -i /root/.ssh/admin-keypair.pem  /root/.ssh/admin-keypair.pem ubuntu@192.168.22.34:/home/ubuntu
+1. Log in to dashboard (Horizon) as privileged user.
+2. Select Project tab - > your created CF project.
+3. Click on Access & Security - > Click on Keypairs tab and the Create Keypair button.
+    - Enter the keypair name as admin-keypair and click on Create Keypair.
+    - Save the keypair to some location like: `/home/<username>/openstack/admin-keypair.pem`
+4. On Access & Security - > Click on Security Groups tab and the Create Security Group button
+	- Enter the Security Group name as *bosh*
+	- **Note** We use this group for all instances
+5. Edit your new Security Group
+	- Click on Edit Rules button and adding some rules
+		- `Proto: ICMP ; Open: Port ; From: -1 ; To: -1 ; Source: CIDR ; CIDR: 0.0.0.0/0`
+		- `Proto: TCP  ; Open: Port ; From: 22 ; To: 22 ; Source: CIDR ; CIDR: 0.0.0.0/0`
+		- `Proto: TCP  ; Open: Port ; From: 80 ; To: 80 ; Source: CIDR ; CIDR: 0.0.0.0/0`
+		- `Proto: TCP  ; Open: Port ; From: 443; To: 443; Source: CIDR ; CIDR: 0.0.0.0/0`
+		- `Proto: TCP  ; Open: PortRange ; From: 1 ; To: 65535 ; Source: CIDR ; CIDR: [Private-Network-Range]` - > this will open all ports for communication between the VM's
+		- `Proto: UDP  ; Open: PortRange ; From: 1 ; To: 65535 ; Source: CIDR ; CIDR: [Private-Network-Range]`
+6. Click on Images & Snapshots and make sure you have an Ubuntu 12.04 LTS image ready to use
+	- If you don't see any images you need to [upload](http://docs.openstack.org/trunk/openstack-compute/admin/content/adding-images.html) a new image with CLI or Horizon
+7. Click on Instances and launch your Inception VM with your created admin-keypair, Ubuntu image and bosh rule
+	- **Note**: You'r Inception VM need enough disk space a good choice is more then 20GB
 
 **Note:** Remember the keypair location. You would use this pair many times later.
+
 
 ## <a id="step2"></a>Step 2: Log in to the VM ##
 
@@ -24,6 +39,7 @@
     (Enter password and hit Enter)
 
 Check whether SSH is installed:
+
     /etc/init.d/ssh status
 
 If necessary, install SSH:
@@ -53,15 +69,15 @@ Copy admin-keypair to /root/.ssh
 
 Change permissions:
 
-	chmod -R 600 /root/.ssh/.
+	chmod -R 0600 /root/.ssh/.
 
 
 Log in to vm:
 
-    ssh -i /root/.ssh/admin-keypair.pem ubuntu@192.168.22.34
+    ssh -i /root/.ssh/admin-keypair.pem ubuntu@[VM-IP]
 
 
-**Note:** 192.168.22.34 is the Inception VM IP Address.
+**Note:** VM-IP is the Inception Public IP Address or if you have access to the fixed network you can use the fixed IP Address
 
 
 ## <a id="step3"></a>Step 3: Install Ruby ##
@@ -81,7 +97,11 @@ Install the BOSH command line interface.
 ## <a id="step5"></a>Step 5: Create Custom Micro Bosh Stemcell ##
 
 Install the dependencies before you run the commands that follow.
-    root@inception-vm:/home/ubuntu/# apt-get install libpq-dev debootstrap kpartx qemu -y
+    
+    apt-get install build-essential libsqlite3-dev curl rsync git-core \
+                    libmysqlclient-dev libxml2-dev libxslt-dev libpq-dev genisoimage mkpasswd \
+                    libreadline6-dev libyaml-dev sqlite3 autoconf libgdbm-dev libncurses5-dev \
+                    automake libtool bison pkg-config libffi-dev debootstrap kpartx qemu -y
 
 Download the BOSH release and build it
 

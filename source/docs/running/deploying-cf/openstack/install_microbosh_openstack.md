@@ -10,7 +10,7 @@ or
 ## <a id="step1"></a>Step 1: Prepare OpenStack and create an Inception VM ##
 
 
-### <a id="step1.1"></a>Step 1.1: With Dashboard
+### <a id="step1.1"></a>Step 1.1: With Dashboard ###
 1. Log in to dashboard (Horizon) as privileged user.
 2. Select Project tab - > your created CF project.
 3. Click on Access & Security - > Click on Keypairs tab and the Create Keypair button.
@@ -33,13 +33,13 @@ or
 7. Click on Instances and launch your Inception VM with your created admin-keypair, Ubuntu image and bosh rule
 	- **Note**: You'r Inception VM need enough disk space a good choice is more then 20GB
 
-### <a id="step1.2"></a>Step 1.2: With CLI (Optional)
+### <a id="step1.2"></a>Step 1.2: With CLI (Optional) ###
 Use your admin credentials and create a rc file
 
     ~> vi adminrc
     export OS_TENANT_NAME=cf-testing 
     export OS_USERNAME=admin
-    export OS_PASSWORD=<password>
+    export OS_PASSWORD=f00bar
     export OS_AUTH_URL="https://<KeystoneIP>:5000/v2.0/"
 
 load your credentials
@@ -79,24 +79,33 @@ You should use your private network explicit.
 
 ## <a id="step2"></a>Step 2: Log in to the VM ##
 
-    sudo su
+    ~> sudo su
     (Enter password and hit Enter)
 
 Check whether SSH is installed:
 
-    /etc/init.d/ssh status
+    ~> /etc/init.d/ssh status
 
 If necessary, install SSH:
 
-    apt-get install ssh
+    ~> apt-get install ssh
 
+
+Copy your generated key to your vm
+
+    ~> scp -i /home/<username>/openstack/admin-keypair.pem ubuntu@<VM-IP>:~/
 
 Log in to vm:
 
-    ssh -i /home/<username>/openstack/admin-keypair.pem ubuntu@[VM-IP]
-
+    ~> ssh -i /home/<username>/openstack/admin-keypair.pem ubuntu@<VM-IP>
 
 **Note:** VM-IP is the Inception Public IP Address or if you have access to the fixed network you can use the fixed IP Address
+Make your generated key secure and move to the correct location
+
+    ~> sudo su
+    (Enter password and hit Enter)
+    ~> mkdir ~/.ssh && mv /home/ubunt/admin-keypair.pem ~/.ssh/ && chmod 0600 ~/.ssh/admin-keypair.pem
+
 
 
 ## <a id="step3"></a>Step 3: Install Ruby ##
@@ -104,37 +113,51 @@ Log in to vm:
 Install Ruby and RubyGems following the instructions on the [Installing Ruby](/docs/common/install_ruby.html) page.
  
 
-## <a id="step4"></a>Step 4: Install Bosh CLI ##
-
-Install the BOSH command line interface.
-
-
-    gem install bosh_deployer --no-ri --no-rdoc
-
-
-
-## <a id="step5"></a>Step 5: Create Custom Micro Bosh Stemcell ##
+## <a id="step4"></a>Step 4: Install Bosh CLI and components ##
 
 Install the dependencies before you run the commands that follow.
-    
-    apt-get install build-essential libsqlite3-dev curl rsync git-core \
+
+    ~> apt-get update
+    ~> apt-get upgrade
+    ~> apt-get install build-essential libsqlite3-dev curl rsync git-core \
                     libmysqlclient-dev libxml2-dev libxslt-dev libpq-dev genisoimage mkpasswd \
                     libreadline6-dev libyaml-dev sqlite3 autoconf libgdbm-dev libncurses5-dev \
                     automake libtool bison pkg-config libffi-dev debootstrap kpartx qemu -y
 
+Create your bosh env
+    
+    ~> mkdir -p /var/vcap/bootstrap/ && mkdir -p /var/vcap/deployments && mkdir -p /var/vcap/releases && mkdir -p /var/vcap/stemcells
+Checkout bosh and submodules and install all required gems including bosh cli
+
+    ~> cd /var/vcap/bootstrap/ && git clone https://github.com/cloudfoundry/bosh
+    ~> cd /var/vcap/bootstrap/bosh && git submodule update –init
+    ~> bundle install –local –binstubs
+    ~> bundle exec rake all:install
+Maybe you need to install some libs to compile all gem binaries.
+
+
+## <a id="step5"></a>Step 5: Micro Bosh Stemcell ##
+
+### <a id="step5.1"></a>Step 5.1: Download latest ###
+Download the latest successfully build of micro bosh and bosh stemcells.
+    
+    ~> cd /var/vcap/stemcells/
+    ~> wget http://bosh-jenkins-artifacts.s3.amazonaws.com/last_successful_micro-bosh-stemcell-openstack.tgz
+    ~> wget http://bosh-jenkins-artifacts.s3.amazonaws.com/last_successful-bosh-stemcell-openstack.tgz
+
+
+### <a id="step5.2"></a>Step 5.2: Create Custom Stemcell (optional) ###
 Download the BOSH release and build it
 
-    mkdir -p releases
-    cd  releases
-    git clone git://github.com/frodenas/bosh-release.git
-    cd bosh-release
-    git submodule update --init
+    ~> cd i/var/vcap/releases
+    ~> git clone git://github.com/frodenas/bosh-release.git
+    ~> cd bosh-release
+    ~> git submodule update --init
 
 
 ####Build the BOSH release
 
-
-    bosh create release --with-tarball
+    ~> bosh create release --with-tarball
 
 If this is the first time you have run Bosh, create the release in the release repo. You are asked to name the release, for example, "bosh".
 
@@ -143,25 +166,23 @@ If this is the first time you have run Bosh, create the release in the release r
     Release manifest: /home/ubuntu/releases/bosh-release/dev_releases/bosh-x.y-dev.yml
     Release tarball (95.2M): /home/ubuntu/releases/bosh-release/dev_releases/bosh-x.y-dev.tgz
 
-####Install BOSH Agent
+    ~> cd /home/ubuntu/
+    ~> git clone git://github.com/frodenas/bosh.git
+    ~> cd bosh/agent/
+    ~> bundle install --without=development test
 
-    cd /home/ubuntu/
-    git clone git://github.com/frodenas/bosh.git
-    cd bosh/agent/
-    bundle install --without=development test
-
-    apt-get install libpq-dev
+    ~> apt-get install libpq-dev
 
 ####Install OpenStack Registry
 
-    cd /home/ubuntu/bosh/openstack_registry
-    bundle install --without=development test
-    bundle exec rake install
+    ~> cd /home/ubuntu/bosh/openstack_registry
+    ~> bundle install --without=development test
+    ~> bundle exec rake install
 
 ####Build Custom Stemcell
 
-    root@inception-vm:/home/ubuntu/bosh/openstack_registry/# cd /home/ubuntu/bosh/agent
-    root@inception-vm:/home/ubuntu/bosh/agent/# rake stemcell2:micro["openstack",/home/ubuntu/releases/bosh-release/micro/openstack.yml,/home/ubuntu/releases/bosh-release/dev_releases/bosh-x.y-dev.tgz]
+    ~> cd /home/ubuntu/bosh/agent
+    ~> rake stemcell2:micro["openstack",/home/ubuntu/releases/bosh-release/micro/openstack.yml,/home/ubuntu/releases/bosh-release/dev_releases/bosh-x.y-dev.tgz]
 
 **Note:** Replace x.y with actual bosh version numbers. For example: bosh-0.6-dev.tgz
 
@@ -173,18 +194,15 @@ Output will be like this:
 
 ####Copy the generated stemcell to a safe location
 
-    cd /home/ubuntu/
-    mkdir -p stemcells
-    cd stemcells
-    cp /var/tmp/bosh/agent-x.y.z-nnnnn/work/work/micro-bosh-stemcell-openstack-x.y.z.tgz .
+    ~> cp /var/tmp/bosh/agent-x.y.z-nnnnn/work/work/micro-bosh-stemcell-openstack-x.y.z.tgz /var/vcap/stemcells/
 
 
 ## <a id="step6"></a>Step 6: Deploy Micro Bosh Stemcell to Glance ##
 
 This creates the Micro Bosh VM and it shows up in Horizon 
 
-    mkdir -p deployments/microbosh-openstack
-    cd deployments/microbosh-openstack
+    mkdir -p /var/vcap/deployments/microbosh-openstack
+    cd /var/vcap/deployments/microbosh-openstack
 
 ####Create Manifest File
 
@@ -196,35 +214,47 @@ Copy the below content and paste it in `micro_bosh.yml`
     name: microbosh-openstack
 
     env:
-     bosh:
+      bosh:
         password: $6$u/dxDdk4Z4Q3$MRHBPQRsU83i18FRB6CdLX0KdZtT2ZZV7BLXLFwa5tyVZbWp72v2wp.ytmY3KyBZzmdkPgx9D3j3oHaDZxe6F.
 
-
-     level: DEBUG
+    logging:
+      level: DEBUG
 
     network:
-     name: default
-     type: dynamic
-     label: private
-     ip: 192.168.22.34
+      name: default
+      cloud_properties:
+        name: "testing"
+        net_id: 95d0454a-7229-4d64-9afd-be3db1c1aff9 # Internal (fixed_net) network id
+      type: manual
+      label: private
+      ip: 10.100.0.23 # Change to any reserved private project ip
+
 
 
     resources:
      persistent_disk: 4096
      cloud_properties:
-        instance_type: m1.small
+        instance_type: bosh.small
 
     cloud:
       plugin: openstack
       properties:
        openstack:
-           auth_url: http://10.0.0.2:5000/v2.0/tokens
+           auth_url: https://<keystoneURL/IP>:5000/v2.0/tokens
            username: admin
            api_key: f00bar
-           tenant: admin
+           tenant: cf-testing
            default_key_name: admin-keypair
-           default_security_groups: ["default"]
+           default_security_groups: ["bosh"]
            private_key: /root/.ssh/admin-keypair.pem
+
+    apply_spec:
+      agent:
+        blobstore:
+          address: 10.100.0.23 # The same IP as the bosh host
+        nats:
+          address: 10.100.0.23 # The same IP as the bosh host
+      properties: {}
 
 
 
@@ -232,22 +262,25 @@ Copy the below content and paste it in `micro_bosh.yml`
 
     1. Replace Only the red colored values with actual ones.
     2. Generate hashed password for f00bar
-    3. Replace the password with hashed password.
+    3. Replace the password with hashed password. (mkpasswd)
  
 ----
 
-    cd ..
-    bosh micro deployment microbosh-openstack
+    ~> cd ..
+    ~> bosh micro deployment microbosh-openstack
 
 **Output of the command is listed below:**
 
     $ WARNING! Your target has been changed to `http://microbosh-openstack:25555'!
     Deployment set to '/home/ubuntu/deployments/microbosh-openstack/micro_bosh.yml'
 
+####Deploy the deployment with the downloaded stemcell image
+    
+    ~> bosh micro deploy /var/vcap/stemcells/last_successful_micro-bosh-stemcell-openstack.tgz
 
-####Deploy the deployment using the custom stemcell image
+####Deploy the deployment using the custom stemcell image (optional)
 
-    root@inception-vm:/home/ubuntu/deployments/# bosh micro deploy /home/ubuntu/stemcells/micro-bosh-stemcell-openstack-x.y.z.tgz
+    ~> bosh micro deploy /home/ubuntu/stemcells/micro-bosh-stemcell-openstack-x.y.z.tgz
 
 **Output of the command is listed below:**
 

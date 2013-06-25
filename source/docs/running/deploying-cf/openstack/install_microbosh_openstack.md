@@ -9,11 +9,14 @@ or
 
 ## <a id="step1"></a>Step 1: Prepare OpenStack and create an Inception VM ##
 
+
+### <a id="step1.1"></a>Step 1.1: With Dashboard
 1. Log in to dashboard (Horizon) as privileged user.
 2. Select Project tab - > your created CF project.
 3. Click on Access & Security - > Click on Keypairs tab and the Create Keypair button.
     - Enter the keypair name as admin-keypair and click on Create Keypair.
     - Save the keypair to some location like: `/home/<username>/openstack/admin-keypair.pem`
+	- **Note:** Remember the keypair location. You would use this pair many times later.
 4. On Access & Security - > Click on Security Groups tab and the Create Security Group button
 	- Enter the Security Group name as *bosh*
 	- **Note** We use this group for all instances
@@ -30,8 +33,49 @@ or
 7. Click on Instances and launch your Inception VM with your created admin-keypair, Ubuntu image and bosh rule
 	- **Note**: You'r Inception VM need enough disk space a good choice is more then 20GB
 
-**Note:** Remember the keypair location. You would use this pair many times later.
+### <a id="step1.2"></a>Step 1.2: With CLI (Optional)
+Use your admin credentials and create a rc file
 
+    ~> vi adminrc
+    export OS_TENANT_NAME=cf-testing 
+    export OS_USERNAME=admin
+    export OS_PASSWORD=<password>
+    export OS_AUTH_URL="https://<KeystoneIP>:5000/v2.0/"
+
+load your credentials
+
+    ~> source adminrc
+create your own keypair
+
+    ~> nova keypair-add admin-keypair > /home/<username>/openstack/admin-keypair.pem
+    ~> chmod 0600 /home/<username>/openstack/admin-keypair.pem
+
+create security group and rules  
+**Note** Since Grizzly you should use Quantum network manager instead of nova-network (deprecated).
+
+    ~> quantum security-group-create –tenant-id <your tenant-id> bosh
+	~> quantum security-group-rule-create –tenant-id <your tenant-id> –protocol TCP –remote-ip-prefix 0.0.0.0/0 –port-range-min 22 –port-range-max 22 <your group-id>
+    ~> quantum security-group-rule-create –tenant-id <your tenant-id> –protocol TCP –remote-ip-prefix <your Network> –port-range-min 1 –port-range-max 65535 <your group-id>
+    ~> quantum security-group-rule-create –tenant-id <your tenant-id> –protocol UDP –remote-ip-prefix <your Network> –port-range-min 1 –port-range-max 65535 <your group-id>
+    ~> quantum security-group-rule-create –tenant-id <your tenant-id> –protocol TCP –remote-ip-prefix 0.0.0.0/0 –port-range-min 443 –port-range-max 443 <your group-id>
+    ~> quantum security-group-rule-create –tenant-id <your tenant-id> –protocol TCP –remote-ip-prefix 0.0.0.0/0 –port-range-min 80 –port-range-max 80 <your group-id>
+    ~> quantum security-group-rule-create –tenant-id <your tenant-id> –protocol ICMP –remote-ip-prefix 0.0.0.0/0 –port-range-min -1 –port-range-max -1 <your group-id>
+
+checking images if you have a clear Ubuntu 12.04 LTS image
+
+    ~> nova image-list
+if you don't see any image please [check this doc](http://docs.openstack.org/trunk/openstack-compute/admin/content/adding-images.html) to upload a new one.
+
+create a flavor for your bosh vm's
+
+	~> nova flavor-create --ephemeral 10 --swap 0 --is-public false bosh.small <free id> 2048 10 4
+You can use this flavor for all images types in a test or dev environment. In production you need to increase this values specially for dea's.  
+In Addition make sure you have only two of three disks otherwise you will get trouble with bosh and the automatically attached volumes.
+
+start your inception vm
+    
+    ~> nova boot --image <image-name> --flavor bosh.small --key-name admin-keypair --security-groups bosh --nic <net-id=net-uuid (priv)> inception
+You should use your private network explicit.
 
 ## <a id="step2"></a>Step 2: Log in to the VM ##
 
@@ -46,35 +90,10 @@ If necessary, install SSH:
 
     apt-get install ssh
 
-Create SSH keys:
-
-    ssh-keygen -t rsa
-
-Output
-
-    Generating public/private rsa key pair.
-    # Enter file in which to save the key (/home/you/.ssh/id_rsa): <Click Enter>
-    # Enter passphrase (empty for no passphrase):  <Click Enter>
-    # Enter same passphrase again: <Click Enter>
-    Your identification has been saved in /home/you/.ssh/id_rsa.
-    Your public key has been saved in /home/you/.ssh/id_rsa.pub.
-    The key fingerprint is:
-    01:0f:f4:3b:ca:85:d6:17:a1:7d:f0:68:9d:f0:a2:db
-
-
-Copy admin-keypair to /root/.ssh
-
-    cp /home/<username>/openstack/admin-keypair.pem /root/.ssh/.
-
-
-Change permissions:
-
-	chmod -R 0600 /root/.ssh/.
-
 
 Log in to vm:
 
-    ssh -i /root/.ssh/admin-keypair.pem ubuntu@[VM-IP]
+    ssh -i /home/<username>/openstack/admin-keypair.pem ubuntu@[VM-IP]
 
 
 **Note:** VM-IP is the Inception Public IP Address or if you have access to the fixed network you can use the fixed IP Address
